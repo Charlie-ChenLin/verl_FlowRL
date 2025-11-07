@@ -98,9 +98,13 @@ class FlowRLActor(DataParallelPPOActor):
                 position_ids = position_ids.transpose(0, 1)  # (bsz, 4, seqlen) -> (4, bsz, seqlen)
 
             if self.use_remove_padding:
+                # select indices with attention_mask=1, and squeeze them from (bsz,seqlen) to (1,total_nnz)
+                # total_nnz is the total number of valid tokens (excluding paddings)
                 input_ids_rmpad, indices, cu_seqlens, *_ = unpad_input(
                     input_ids.unsqueeze(-1), attention_mask
                 )  # input_ids_rmpad (total_nnz, ...)
+                # indices: (total_nnz,), the indices of tokens (viewed as a one-dimensional vector) with attention_mask==1, used for padding later
+                # cu_seqlens: (B+1,) cumulative seq lengths, (0,end_of_seq0_pos,end_of_seq1_pos,...,end_of_seqB_pos)
                 input_ids_rmpad = input_ids_rmpad.transpose(0, 1)  # (1, total_nnz)
 
                 # unpad the position_ids to align the rotary
@@ -113,7 +117,7 @@ class FlowRLActor(DataParallelPPOActor):
                 else:
                     position_ids_rmpad = index_first_axis(
                         rearrange(position_ids.unsqueeze(-1), "b s ... -> (b s) ..."), indices
-                    ).transpose(0, 1)
+                    ).transpose(0, 1) # (1,total_nnz)
 
                 if "image_bound" in multi_modal_inputs:
                     from verl.utils.dataset.vision_utils import \
@@ -327,9 +331,10 @@ class FlowRLActor(DataParallelPPOActor):
         on_policy = len(mini_batches) == 1 and self.config.ppo_epochs == 1
 
         metrics = {}
-        for _ in range(self.config.ppo_epochs):
+        for _ in range(self.config.ppo_epochs): # multiple epochs over the same batch of trajectories
             for batch_idx, mini_batch in enumerate(mini_batches):
                 if self.config.use_dynamic_bsz:
+                    # the cost of bacward within each mini_batch is determined by config.ppo_max_token_len_per_gpu?
                     max_token_len = self.config.ppo_max_token_len_per_gpu * self.ulysses_sequence_parallel_size
                     micro_batches, _ = prepare_dynamic_batch(mini_batch, max_token_len=max_token_len)
                 else:

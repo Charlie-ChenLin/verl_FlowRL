@@ -1,8 +1,16 @@
 #!/usr/bin/env bash
 set -xeuo pipefail
 
-project_name='FlowRL_Scaling'
-exp_name='FlowRL-cispo-clip-Qwen2.5-7B-1104'
+
+export WANDB_MODE='offline'
+# export WANDB_RESUME='must'
+export WANDB_DIR='/mnt/shared-storage-user/chenlin1/verl_FlowRL_dev/wandb'
+# export WANDB_RUN_ID='offline-run-20251103_220152-ok1pyy8q'
+export VLLM_USE_FLASHINFER=1
+export HYDRA_FULL_ERROR=1
+
+project_name='FlowRL'
+exp_name="FlowRL-cispo-clip-Qwen2.5-7B-$(date +'%Y%m%d-%H%M')"
 
 # Algorithm settings
 adv_estimator=grpo
@@ -57,10 +65,14 @@ RUNTIME_ENV=${RUNTIME_ENV:-"${WORKING_DIR}/verl/trainer/runtime_env.yaml"}
 NNODES=${NNODES:-1}
 
 # Paths
-MODEL_PATH=${MODEL_PATH:-"${WORKING_DIR}/downloads/models/Qwen/Qwen2.5-7B"}
-CKPTS_DIR=${CKPTS_DIR:-"${WORKING_DIR}/outputs/ckpts/${project_name}/${exp_name}"}
-TRAIN_FILE=${TRAIN_FILE:-"${WORKING_DIR}/downloads/data/dapo-math-17k.parquet"}
-TEST_FILE=${TEST_FILE:-"${WORKING_DIR}/downloads/data/aime-2024.parquet"}
+# MODEL_PATH=${MODEL_PATH:-"${WORKING_DIR}/downloads/models/Qwen/Qwen2.5-7B"}
+# CKPTS_DIR=${CKPTS_DIR:-"${WORKING_DIR}/outputs/ckpts/${project_name}/${exp_name}"}
+# TRAIN_FILE=${TRAIN_FILE:-"${WORKING_DIR}/downloads/data/dapo-math-17k.parquet"}
+# TEST_FILE=${TEST_FILE:-"${WORKING_DIR}/downloads/data/aime-2024.parquet"}
+MODEL_PATH='/mnt/shared-storage-user/chenlin1/models/Qwen/Qwen2.5-7B'
+CKPTS_DIR=${CKPTS_DIR:-"/mnt/shared-storage-user/formalverification-shared/chenlin1/verl/ckpts/${project_name}/${exp_name}"}
+TRAIN_FILE=${TRAIN_FILE:-"/mnt/shared-storage-user/chenlin1/verl/downloads/data/dapo-math-17k.parquet"}
+TEST_FILE=${TEST_FILE:-"/mnt/shared-storage-user/chenlin1/verl/downloads/data/aime-2024.parquet"}
 
 # Sampling
 temperature=1.0

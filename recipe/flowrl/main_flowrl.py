@@ -77,7 +77,6 @@ class TaskRunner:
 
         pprint(OmegaConf.to_container(config, resolve=True))  # resolve=True will eval symbol values
         OmegaConf.resolve(config)
-
         # download the checkpoint from hdfs
         local_path = copy_to_local(config.actor_rollout_ref.model.path)
 
@@ -101,10 +100,12 @@ class TaskRunner:
             ray_worker_group_cls = RayWorkerGroup
 
         elif config.actor_rollout_ref.actor.strategy == "megatron":
-            assert config.actor_rollout_ref.actor.strategy == config.critic.strategy
-            from verl.workers.megatron_workers import CriticWorker, ActorRolloutRefWorker
+        #     # flowrl is not implemented
+        #     assert config.actor_rollout_ref.actor.strategy == config.critic.strategy
+        #     from verl.workers.megatron_workers import CriticWorker, ActorRolloutRefWorker
 
-            ray_worker_group_cls = RayWorkerGroup
+        #     ray_worker_group_cls = RayWorkerGroup
+            raise NotImplementedError
 
         else:
             raise NotImplementedError

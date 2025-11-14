@@ -648,6 +648,7 @@ class FlowRLActor(DataParallelPPOActor):
             "actor/ref_log_prob": verl_F.masked_mean(ref_log_prob, response_mask).detach().item(),
             "actor/ref_log_prob_cispo_clip": verl_F.masked_mean(ref_log_prob, combined_mask).detach().item(),
             "actor/log_z": log_z.mean().detach().item(),
+            "actor/log_z_plus_bias": (log_z + alphagfn_bias).mean().detach().item(),
             "actor/log_reward": verl_F.masked_mean(reward, response_mask).detach().item(),
             "actor/log_reward_cispo_clip": verl_F.masked_mean(reward, combined_mask).detach().item(),
             "actor/final_loss": avg_loss.detach().item(),

@@ -72,6 +72,7 @@ class FlowRLActor(DataParallelPPOActor):
         super().__init__(config, *args, **kwargs)
         # FlowRL hyperparameters (hardcoded as per paper)
         self.flowrl_beta_coef = 15.0  # β coefficient for reward scaling in flowrl loss
+        self.alphagfn_alpha = getattr(config, "alphagfn_alpha", None)
 
     def _forward_micro_batch(
         self, micro_batch, temperature, calculate_entropy=False, return_log_z=False
@@ -395,15 +396,29 @@ class FlowRLActor(DataParallelPPOActor):
                     # )
                     # Compute FlowRL trajectory balance loss
                     
-                    policy_loss, flowrl_metrics = self.compute_flowrl_cispo_clip(
-                        log_prob=log_prob,
-                        ref_log_prob=ref_log_prob,
-                        old_log_prob=old_log_prob,
-                        log_z=log_z,
-                        reward=advantages,
-                        response_mask=response_mask,
-                        clip_ratio=self.config.clip_ratio,
-                        rollout_log_probs=rollout_log_probs)
+                    if self.alphagfn_alpha is not None:
+                        policy_loss, flowrl_metrics = self.compute_flowrl_cispo_clip_alphagfn(
+                            log_prob=log_prob,
+                            ref_log_prob=ref_log_prob,
+                            old_log_prob=old_log_prob,
+                            log_z=log_z,
+                            reward=advantages,
+                            response_mask=response_mask,
+                            clip_ratio=self.config.clip_ratio,
+                            rollout_log_probs=rollout_log_probs,
+                            alphagfn_alpha=self.alphagfn_alpha,
+                        )
+                    else:
+                        policy_loss, flowrl_metrics = self.compute_flowrl_cispo_clip(
+                            log_prob=log_prob,
+                            ref_log_prob=ref_log_prob,
+                            old_log_prob=old_log_prob,
+                            log_z=log_z,
+                            reward=advantages,
+                            response_mask=response_mask,
+                            clip_ratio=self.config.clip_ratio,
+                            rollout_log_probs=rollout_log_probs,
+                        )
 
                     # if entropy_coeff != 0:
                     #     entropy_loss = agg_loss(loss_mat=entropy, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)
@@ -491,7 +506,8 @@ class FlowRLActor(DataParallelPPOActor):
         imp_w = torch.clamp(imp_w_raw, 1 - 0.2, 1 + 0.28)
 
         # Loss: weighted squared residual with clipped importance weights
-        weighted_losses = imp_w * (delta ** 2)
+        delta_sq = delta ** 2
+        weighted_losses = imp_w * delta_sq
         avg_loss = torch.mean(weighted_losses)
 
         # PPO KL: negative_approx_kl = log_prob - old_log_prob
@@ -510,19 +526,143 @@ class FlowRLActor(DataParallelPPOActor):
         # Metrics
         loss_term_dict = {
             "actor/log_prob": verl_F.masked_mean(log_prob, response_mask).detach().item(),
+            "actor/log_prob_cispo_clip": verl_F.masked_mean(log_prob, combined_mask).detach().item(),
             "actor/old_log_prob": verl_F.masked_mean(old_log_prob, response_mask).detach().item(),
+            "actor/old_log_prob_cispo_clip": verl_F.masked_mean(old_log_prob, combined_mask).detach().item(),
             "actor/ref_log_prob": verl_F.masked_mean(ref_log_prob, response_mask).detach().item(),
+            "actor/ref_log_prob_cispo_clip": verl_F.masked_mean(ref_log_prob, combined_mask).detach().item(),
             "actor/log_z": log_z.mean().detach().item(),
             "actor/log_reward": verl_F.masked_mean(reward, response_mask).detach().item(),
+            "actor/log_reward_cispo_clip": verl_F.masked_mean(reward, combined_mask).detach().item(),
             "actor/final_loss": avg_loss.detach().item(),
+            "actor/delta_sq_mean": delta_sq.mean().detach().item(),
             "actor/importance_weight_raw": imp_w_raw.mean().detach().item(),
             "actor/importance_weight": imp_w.mean().detach().item(),
             "actor/ppo_kl": ppo_kl.detach().item(),  # PPO-style KL (current vs old policy)
+            "actor/ppo_kl_cispo_clip": verl_F.masked_mean(-negative_approx_kl, combined_mask).detach().item(),
             "actor/ref_kl": ref_kl.detach().item(),  # KL with reference policy
+            "actor/ref_kl_cispo_clip": verl_F.masked_mean(-approx_kl_ref, combined_mask).detach().item(),
             "actor/cispo_mask_ratio": cispo_mask_ratio.detach().item(),   # cispo
             "actor/cispo_dropped_tokens": cispo_dropped.detach().item(),  # cispo
             "actor/condition_1_count": (condition_1 * response_mask).sum().detach().item(),  # cispo
             "actor/condition_2_count": (condition_2 * response_mask).sum().detach().item(),  # cispo
+        }
+
+        return avg_loss, loss_term_dict
+    
+    def compute_flowrl_cispo_clip_alphagfn(
+        self,
+        log_prob=None,
+        ref_log_prob=None,
+        old_log_prob=None,
+        log_z=None,
+        reward=None,
+        response_mask=None,
+        clip_ratio=None,
+        rollout_log_probs=None,
+        alphagfn_alpha=None,
+    ):
+        log_ratio = log_prob - old_log_prob  # (B, T)
+        ratio = torch.exp(log_ratio)  # (B, T)
+
+        condition_1 = (reward > 0) & (ratio > 1.0 + 0.28)  # (B, T)
+        condition_2 = (reward < 0) & (ratio < 1.0 - 0.2)   # (B, T)
+
+        # CISPO mask
+        cispo_mask = ~(condition_1 | condition_2) 
+        cispo_mask = cispo_mask.float()  
+        combined_mask = response_mask * cispo_mask
+
+        # squeeze log_z to (B,)
+        log_z = log_z.squeeze(-1)
+
+        # Average token log-probs & rewards over valid positions
+        avg_log_prob = verl_F.masked_mean(log_prob, combined_mask, axis=1)
+        avg_ref_log_prob = verl_F.masked_mean(ref_log_prob, combined_mask, axis=1)
+        seq_log_reward = verl_F.masked_mean(reward, combined_mask, axis=1)
+
+        if alphagfn_alpha is None:
+            raise ValueError("alphagfn_alpha must be provided when using AlphaGFN CISPO loss.")
+        alpha_tensor = torch.as_tensor(alphagfn_alpha, device=log_prob.device, dtype=torch.float32)
+        eps = 1e-6
+        alpha_tensor = torch.clamp(alpha_tensor, min=eps, max=1 - eps)
+        bias_tensor = torch.log(alpha_tensor) - torch.log1p(-alpha_tensor)
+        bias_tensor = bias_tensor.to(log_prob.dtype)
+        batch_size = log_prob.shape[0]
+
+        if bias_tensor.ndim <= 1:
+            if bias_tensor.ndim == 0 or bias_tensor.shape[0] == 1:
+                alphagfn_bias = bias_tensor.reshape(1).expand(batch_size)
+            elif bias_tensor.shape[0] == batch_size:
+                alphagfn_bias = bias_tensor
+            else:
+                raise ValueError(
+                    f"alphagfn_alpha shape {bias_tensor.shape} is incompatible with batch size {batch_size}."
+                )
+        else:
+            if bias_tensor.shape != log_prob.shape:
+                try:
+                    bias_tensor = bias_tensor.expand_as(log_prob)
+                except RuntimeError as exc:
+                    raise ValueError(
+                        f"alphagfn_alpha with shape {bias_tensor.shape} is not broadcastable to log_prob "
+                        f"shape {log_prob.shape}."
+                    ) from exc
+            alphagfn_bias = verl_F.masked_mean(bias_tensor, combined_mask, axis=1)
+
+        # FlowRL residual: logZ + logpf - β*R - logpref
+        delta = log_z + avg_log_prob - self.flowrl_beta_coef * seq_log_reward - avg_ref_log_prob + alphagfn_bias
+
+        # Importance ratio from current vs old policy (product of token ratios)
+        log_w = verl_F.masked_sum(log_prob - old_log_prob, combined_mask, axis=1)
+        imp_w_raw = torch.exp(log_w).detach()
+
+        # Clamp importance weight for numerical stability (prevent extreme values)
+        # imp_w = torch.clamp(imp_w_raw, max=10.0)
+        imp_w = torch.clamp(imp_w_raw, 1 - 0.2, 1 + 0.28)
+
+        # Loss: weighted squared residual with clipped importance weights
+        delta_sq = delta ** 2
+        weighted_losses = imp_w * delta_sq
+        avg_loss = torch.mean(weighted_losses)
+
+        # PPO KL: negative_approx_kl = log_prob - old_log_prob
+        negative_approx_kl = log_prob - old_log_prob
+        ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
+
+        # Reference KL: approx_kl_ref = log_prob - ref_log_prob
+        approx_kl_ref = log_prob - ref_log_prob
+        ref_kl = verl_F.masked_mean(-approx_kl_ref, response_mask)
+
+        # cispo
+        total_tokens = response_mask.sum()
+        cispo_dropped = (response_mask * (1 - cispo_mask)).sum()
+        cispo_mask_ratio = cispo_dropped / (total_tokens + 1e-8)
+
+        # Metrics
+        loss_term_dict = {
+            "actor/log_prob": verl_F.masked_mean(log_prob, response_mask).detach().item(),
+            "actor/log_prob_cispo_clip": verl_F.masked_mean(log_prob, combined_mask).detach().item(),
+            "actor/old_log_prob": verl_F.masked_mean(old_log_prob, response_mask).detach().item(),
+            "actor/old_log_prob_cispo_clip": verl_F.masked_mean(old_log_prob, combined_mask).detach().item(),
+            "actor/ref_log_prob": verl_F.masked_mean(ref_log_prob, response_mask).detach().item(),
+            "actor/ref_log_prob_cispo_clip": verl_F.masked_mean(ref_log_prob, combined_mask).detach().item(),
+            "actor/log_z": log_z.mean().detach().item(),
+            "actor/log_reward": verl_F.masked_mean(reward, response_mask).detach().item(),
+            "actor/log_reward_cispo_clip": verl_F.masked_mean(reward, combined_mask).detach().item(),
+            "actor/final_loss": avg_loss.detach().item(),
+            "actor/delta_sq_mean": delta_sq.mean().detach().item(),
+            "actor/importance_weight_raw": imp_w_raw.mean().detach().item(),
+            "actor/importance_weight": imp_w.mean().detach().item(),
+            "actor/ppo_kl": ppo_kl.detach().item(),  # PPO-style KL (current vs old policy)
+            "actor/ppo_kl_cispo_clip": verl_F.masked_mean(-negative_approx_kl, combined_mask).detach().item(),
+            "actor/ref_kl": ref_kl.detach().item(),  # KL with reference policy
+            "actor/ref_kl_cispo_clip": verl_F.masked_mean(-approx_kl_ref, combined_mask).detach().item(),
+            "actor/cispo_mask_ratio": cispo_mask_ratio.detach().item(),   # cispo
+            "actor/cispo_dropped_tokens": cispo_dropped.detach().item(),  # cispo
+            "actor/condition_1_count": (condition_1 * response_mask).sum().detach().item(),  # cispo
+            "actor/condition_2_count": (condition_2 * response_mask).sum().detach().item(),  # cispo
+            "actor/alphagfn_bias": alphagfn_bias.mean().detach().item(),
         }
 
         return avg_loss, loss_term_dict

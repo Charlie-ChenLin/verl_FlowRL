@@ -104,6 +104,16 @@ class FlowRLActorRolloutRefWorker(ActorRolloutRefWorker):
     - ProjZModule for log Z estimation (added in _build_model_optimizer)
     - FlowRLActor with trajectory balance loss (replaces standard DPActor)
     """
+    def _flowrl_log_prefix(self) -> str:
+        prefix = "[FlowRL]"
+        actor_cfg = getattr(self.config, "actor", None)
+        if actor_cfg is not None:
+            alpha = getattr(actor_cfg, "alphagfn_alpha", None)
+            if alpha is None and hasattr(actor_cfg, "get"):
+                alpha = actor_cfg.get("alphagfn_alpha", None)
+            if alpha is not None:
+                prefix += "[AlphaGFN]"
+        return prefix
     
     def _build_model_optimizer(
         self,
@@ -227,7 +237,7 @@ class FlowRLActorRolloutRefWorker(ActorRolloutRefWorker):
                 actor_module.add_module("proj_z", ProjZModule(n_dim, num_layers=proj_layers))
                 
                 if self.rank == 0:
-                    print(f"[FlowRL] Added proj_z (layers={proj_layers}, hidden={n_dim}) BEFORE FSDP wrap")
+                    print(f"{self._flowrl_log_prefix()} Added proj_z (layers={proj_layers}, hidden={n_dim}) BEFORE FSDP wrap")
             # ===============================================
 
             # Apply Liger kernel to the model if use_liger is set to True
@@ -421,7 +431,7 @@ class FlowRLActorRolloutRefWorker(ActorRolloutRefWorker):
         # Replace the actor with FlowRLActor if this worker is an actor
         if self._is_actor:
             if self.rank == 0:
-                print(f"[FlowRL] Replacing DataParallelPPOActor with FlowRLActor")
+                print(f"{self._flowrl_log_prefix()} Replacing DataParallelPPOActor with FlowRLActor")
 
             # Convert actor config to dataclass
             actor_cfg = omega_conf_to_dataclass(self.config.actor)
@@ -465,7 +475,7 @@ class FlowRLActorRolloutRefWorker(ActorRolloutRefWorker):
         params = {k: v for k, v in params.items() if not k.startswith("proj_z")}
         num_proj_z_filtered = len([k for k in self.actor_module_fsdp.state_dict().keys() if k.startswith("proj_z")])
         if num_proj_z_filtered > 0 and self.rank == 0:
-            print(f"[FlowRL] Filtered {num_proj_z_filtered} proj_z parameters before syncing to vLLM")
+            print(f"{self._flowrl_log_prefix()} Filtered {num_proj_z_filtered} proj_z parameters before syncing to vLLM")
         # ===============================================
 
         params = convert_weight_keys(

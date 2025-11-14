@@ -17,6 +17,11 @@ reward_model:
     penalty_factor: 0.0
     log: False
 
+actor_rollout_ref:
+  actor:
+    # Set to a value in (0, 1) to enable AlphaGFN biasing in the FlowRL loss.
+    alphagfn_alpha: null
+
 algorithm:
   # _target_: verl.trainer.config.AlgoConfig
 

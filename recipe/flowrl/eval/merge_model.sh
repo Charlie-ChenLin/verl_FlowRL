@@ -12,11 +12,12 @@ TARGET_DIR="${TARGET_DIR:-/mnt/shared-storage-user/llmit/user/xuekaizhu/verl_Flo
 TARGET_DIR_WITH_PROJ_Z="${TARGET_DIR}_with_proj_z"
 
 # Change to working directory
-cd /mnt/shared-storage-user/llmit/user/xuekaizhu/verl_FlowRL
+# cd /mnt/shared-storage-user/llmit/user/xuekaizhu/verl_FlowRL
+cd /mnt/shared-storage-user/chenlin1/verl_FlowRL_lchen
 
 # Activate conda environment
-source /mnt/shared-storage-user/llmit/user/chengguangran/miniconda3/etc/profile.d/conda.sh
-conda activate verl
+# source /mnt/shared-storage-user/llmit/user/chengguangran/miniconda3/etc/profile.d/conda.sh
+# conda activate verl
 
 echo '========================================'
 echo 'Step 1: Merging FSDP checkpoint to HuggingFace format'
@@ -43,9 +44,12 @@ python recipe/flowrl/intern-s2/eval/remove_proj_z.py \
     ${TARGET_DIR_WITH_PROJ_Z} \
     ${TARGET_DIR}
 
+# Clean up the intermediate directory to save space
+rm -rf "${TARGET_DIR_WITH_PROJ_Z}"
+
 echo ''
 echo '========================================'
 echo 'Merge complete!'
 echo "Clean model (no proj_z): ${TARGET_DIR}"
-echo "Original model (with proj_z): ${TARGET_DIR_WITH_PROJ_Z}"
+# echo "Original model (with proj_z): ${TARGET_DIR_WITH_PROJ_Z}"
 echo '========================================'

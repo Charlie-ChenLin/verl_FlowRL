@@ -10,7 +10,7 @@ export VLLM_USE_FLASHINFER=1
 export HYDRA_FULL_ERROR=1
 
 project_name='FlowRL'
-exp_name="FlowRL-cispo-clip-Qwen2.5-7B-$(date +'%Y%m%d-%H%M')"
+exp_name="FlowRL-cispo-clip-Qwen2.5-3B-Instruct-$(date +'%Y%m%d-%H%M')"
 
 # Algorithm settings
 adv_estimator=grpo
@@ -56,7 +56,7 @@ n_resp_per_prompt=8
 train_prompt_mini_bsz=32
 
 # Checkpoint saving frequency (-1 to disable periodic saves)
-save_freq=10
+save_freq=50
 
 # Ray
 RAY_ADDRESS=${RAY_ADDRESS:-"http://localhost:8265"}
@@ -69,7 +69,7 @@ NNODES=${NNODES:-1}
 # CKPTS_DIR=${CKPTS_DIR:-"${WORKING_DIR}/outputs/ckpts/${project_name}/${exp_name}"}
 # TRAIN_FILE=${TRAIN_FILE:-"${WORKING_DIR}/downloads/data/dapo-math-17k.parquet"}
 # TEST_FILE=${TEST_FILE:-"${WORKING_DIR}/downloads/data/aime-2024.parquet"}
-MODEL_PATH='/mnt/shared-storage-user/chenlin1/models/Qwen/Qwen2.5-7B'
+MODEL_PATH='/mnt/shared-storage-user/chenlin1/models/Qwen/Qwen2.5-3B-Instruct'
 CKPTS_DIR=${CKPTS_DIR:-"/mnt/shared-storage-user/formalverification-shared/chenlin1/verl/ckpts/${project_name}/${exp_name}"}
 TRAIN_FILE=${TRAIN_FILE:-"/mnt/shared-storage-user/chenlin1/verl/downloads/data/dapo-math-17k.parquet"}
 TEST_FILE=${TEST_FILE:-"/mnt/shared-storage-user/chenlin1/verl/downloads/data/aime-2024.parquet"}
@@ -81,7 +81,7 @@ top_k=-1 # 0 for HF rollout, -1 for vLLM rollout
 val_top_p=0.7
 
 # Performance Related Parameter
-n_gpus=8
+n_gpus=4
 sp_size=1
 use_dynamic_bsz=True
 actor_ppo_max_token_len=$((max_prompt_length + max_response_length))

@@ -20,3 +20,4 @@ done
 # tmux new-window -n flowrl-raw-verl070dev0 -c "#{pane_current_path}"
 # tmux select-window -t 0:1
 
+rclone  copy --progress --transfers 200 --checkers 200 --links h-ceph:ailab-public-shared/hf_hub/models--Qwen--Qwen2.5-3B-Instruct/  /mnt/shared-storage-user/formalverification-shared/openai-community/Qwen/models--Qwen--Qwen2.5-3B-Instruct/

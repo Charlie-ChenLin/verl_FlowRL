@@ -13,11 +13,11 @@ project_name='FlowRL'
 # AlphaGFN
 # alphagfn_alpha=0.45
 # alphagfn_alpha=0.55
-# alphagfn_alpha=0.1
 
+alphagfn_alpha=0.1
 # alphagfn_alpha=0.4
 # alphagfn_alpha=0.6
-alphagfn_alpha=0.9
+# alphagfn_alpha=0.9
 
 
 exp_name="FlowRL-cispo-clip-AlphaGFN-${alphagfn_alpha}-Qwen2.5-3B-Instruct-$(date +'%Y%m%d-%H%M')"

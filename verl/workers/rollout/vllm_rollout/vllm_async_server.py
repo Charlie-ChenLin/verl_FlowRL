@@ -34,7 +34,14 @@ from vllm.entrypoints.openai.api_server import (
 from vllm.inputs import TokensPrompt
 from vllm.outputs import RequestOutput
 from vllm.usage.usage_lib import UsageContext
-from vllm.utils import FlexibleArgumentParser, get_tcp_uri
+try:
+    from vllm.utils import FlexibleArgumentParser, get_tcp_uri
+except ImportError:
+    from vllm.utils import FlexibleArgumentParser
+
+    # vLLM >=0.8.5 不再导出 get_tcp_uri，这里提供兼容实现
+    def get_tcp_uri(host, port):
+        return f"tcp://[{host}]:{port}" if ":" in host else f"tcp://{host}:{port}"
 from vllm.v1.engine.async_llm import AsyncLLM
 from vllm.v1.engine.core import EngineCoreProc
 from vllm.v1.engine.utils import CoreEngineProcManager

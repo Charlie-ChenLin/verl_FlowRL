@@ -12,8 +12,8 @@ PROJECT_DIR="$(pwd)"
 CONFIG_PATH="$PROJECT_DIR/examples/sglang_multiturn/config"
 
 
-TRAIN_DATA="$HOME/data/searchR1_processed_direct/train.parquet"
-VAL_DATA="$HOME/data/searchR1_processed_direct/test.parquet"
+TRAIN_DATA="./data/searchR1_processed_direct/train.parquet"
+VAL_DATA="./data/searchR1_processed_direct/test.parquet"
 
 TOOL_CONFIG="$CONFIG_PATH/tool_config/search_tool_config.yaml"
 
@@ -24,8 +24,10 @@ CUDA_VISIBLE_DEVICES=7 python examples/sglang_multiturn/search_r1_like/local_den
   --retriever_name e5 \
   --topk 3 \
   --faiss_gpu
-
-CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6 python3 -m verl.trainer.main_ppo \
+    >retriever.log 2>&1 
+    &
+sleep 10
+CUDA_VISIBLE_DEVICES=0,1,2,3,4 python3 -m verl.trainer.main_ppo \
     --config-path="$CONFIG_PATH" \
     --config-name='search_multiturn_grpo' \
     algorithm.adv_estimator=grpo \

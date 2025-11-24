@@ -52,3 +52,9 @@ if [ $USE_MEGATRON -eq 1 ]; then
 fi
 
 echo "Successfully installed all packages"
+
+# sglang 0.4.8 里才有供multi-turn跑的 sglang.srt.weight_sync
+pip uninstall -y sglang sgl-kernel
+# pip install "sglang[all]==0.4.8"
+pip install --no-deps sglang==0.4.8
+pip install --no-deps sgl-kernel==0.1.9 

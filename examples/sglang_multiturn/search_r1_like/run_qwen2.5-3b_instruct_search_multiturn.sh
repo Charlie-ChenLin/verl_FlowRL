@@ -6,7 +6,7 @@ set -x
 ulimit -n 65535
 
 export WANDB_MODE="offline"
-export  HYDRA_FULL_ERROR=1 
+export  HYDRA_FULL_ERROR=1
 
 PROJECT_DIR="$(pwd)"
 CONFIG_PATH="$PROJECT_DIR/examples/sglang_multiturn/config"

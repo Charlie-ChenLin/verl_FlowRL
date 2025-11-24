@@ -127,3 +127,5 @@ log
 outputs
 .history
 work_dirs/
+
+data/

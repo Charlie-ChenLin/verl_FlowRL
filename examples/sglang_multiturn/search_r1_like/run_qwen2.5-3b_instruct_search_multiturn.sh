@@ -5,6 +5,9 @@ set -x
 
 ulimit -n 65535
 
+export WANDB_MODE="offline"
+export  HYDRA_FULL_ERROR=1 
+
 PROJECT_DIR="$(pwd)"
 CONFIG_PATH="$PROJECT_DIR/examples/sglang_multiturn/config"
 
@@ -61,7 +64,7 @@ CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6 python3 -m verl.trainer.main_ppo \
     trainer.logger='["console","wandb"]' \
     trainer.project_name='search_r1_like_async_rl' \
     trainer.experiment_name='qwen2.5-3b-instruct_function_rm-search-async-sgl-multi-w-searchtool-verify-n16' \
-    trainer.n_gpus_per_node=7 \
+    trainer.n_gpus_per_node=5 \
     trainer.nnodes=1 \
     trainer.save_freq=100 \
     trainer.test_freq=50 \

@@ -3,4 +3,6 @@ python examples/sglang_multiturn/search_r1_like/local_dense_retriever/download.p
   --save_path ./data/search_r1_retriever
 cat ./data/search_r1_retriever/part_a* > ./data/search_r1_retriever/e5_Flat.index
 
+cd /mnt/shared-storage-user/chenlin1/verl_FlowRL_lchen
+export PYTHONPATH=$PWD:$PYTHONPATH
 python examples/data_preprocess/preprocess_search_r1_dataset.py --local_dir ./data/searchR1_processed_direct

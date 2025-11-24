@@ -42,10 +42,34 @@ except ImportError:
     # vLLM >=0.8.5 不再导出 get_tcp_uri，这里提供兼容实现
     def get_tcp_uri(host, port):
         return f"tcp://[{host}]:{port}" if ":" in host else f"tcp://{host}:{port}"
-from vllm.v1.engine.async_llm import AsyncLLM
-from vllm.v1.engine.core import EngineCoreProc
-from vllm.v1.engine.utils import CoreEngineProcManager
-from vllm.v1.executor.abstract import Executor
+try:
+    from vllm.v1.engine.async_llm import AsyncLLM
+    from vllm.v1.engine.core import EngineCoreProc
+    VLLM_V1_ENGINE_AVAILABLE = True
+except ImportError:
+    AsyncLLM = None
+    EngineCoreProc = None
+    VLLM_V1_ENGINE_AVAILABLE = False
+
+try:
+    from vllm.v1.engine.utils import CoreEngineProcManager
+except ImportError:
+    CoreEngineProcManager = None
+
+try:
+    from vllm.v1.executor.abstract import Executor
+    HAS_V1_EXECUTOR = True
+except ImportError:
+    HAS_V1_EXECUTOR = False
+
+    class _MissingExecutor:
+        @staticmethod
+        def get_class(*_, **__):
+            raise RuntimeError(
+                "vLLM v1 executor utilities are missing; upgrade vllm to a build with v1 modules."
+            )
+
+    Executor = _MissingExecutor
 
 from verl.single_controller.ray import RayClassWithInitArgs
 from verl.utils.config import omega_conf_to_dataclass
@@ -295,6 +319,11 @@ class vLLMHttpServer:
             await self.run_headless(server_args)
 
     async def run_server(self, args: argparse.Namespace):
+        if AsyncLLM is None:
+            raise RuntimeError(
+                "vLLM AsyncLLM is not available. Please ensure vllm is installed with V1 support "
+                "(vllm>=0.8.x) or upgrade to a build exposing vllm.v1.engine.async_llm."
+            )
         engine_args = AsyncEngineArgs.from_cli_args(args)
         usage_context = UsageContext.OPENAI_API_SERVER
         vllm_config = engine_args.create_engine_config(usage_context=usage_context)
@@ -319,6 +348,19 @@ class vLLMHttpServer:
         self._server_port, self._server_task = await run_unvicorn(app, args, self._server_address)
 
     async def run_headless(self, args: argparse.Namespace):
+        if (
+            not VLLM_V1_ENGINE_AVAILABLE
+            or CoreEngineProcManager is None
+            or EngineCoreProc is None
+            or not HAS_V1_EXECUTOR
+        ):
+            raise RuntimeError(
+                "vLLM v1 modules are not available in this environment. "
+                "Headless (non-master) servers require vllm>=0.8.x with v1 support "
+                "or a build that exposes vllm.v1.engine.*. "
+                "Please upgrade vllm or run with data_parallel_size=1 so only run_server is used."
+            )
+
         # Create the EngineConfig.
         engine_args = vllm.AsyncEngineArgs.from_cli_args(args)
         usage_context = UsageContext.OPENAI_API_SERVER

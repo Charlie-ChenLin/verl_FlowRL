@@ -19,13 +19,11 @@ TOOL_CONFIG="$CONFIG_PATH/tool_config/search_tool_config.yaml"
 
 CUDA_VISIBLE_DEVICES=7 python examples/sglang_multiturn/search_r1_like/local_dense_retriever/retrieval_server.py \
   --index_path ./data/search_r1_retriever/e5_Flat.index \
-  --corpus_path ./data/search_r1_retriever/wiki-18.jsonl.gz \
+  --corpus_path ./data/search_r1_retriever/corpus_unpacked/data00/jiajie_jin/flashrag_indexes/wiki_dpr_100w/wiki_dump.jsonl \
   --retriever_model intfloat/e5-base-v2 \
   --retriever_name e5 \
   --topk 3 \
-  --faiss_gpu
-    >retriever.log 2>&1 
-    &
+  --faiss_gpu >retriever.log 2>&1 &
 sleep 10
 CUDA_VISIBLE_DEVICES=0,1,2,3,4 python3 -m verl.trainer.main_ppo \
     --config-path="$CONFIG_PATH" \

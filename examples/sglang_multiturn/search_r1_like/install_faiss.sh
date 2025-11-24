@@ -9,6 +9,8 @@ pip uninstall -y faiss-gpu-cu12 faiss-gpu faiss-cpu faiss || true
 
 # 先更新cmake
 conda install -c conda-forge cmake=3.27
+# 再补blas
+conda install -c conda-forge mkl mkl-devel
 
 # 4) 编译安装带 sm90 的 faiss-gpu
 git clone https://github.com/facebookresearch/faiss.git

@@ -336,8 +336,11 @@ class vLLMHttpServer:
             disable_log_stats=engine_args.disable_log_stats,
         )
 
-        # Don't keep the dummy data in memory
-        await engine_client.reset_mm_cache()
+        # Don't keep the dummy data in memory. Some older vLLM builds lack this API.
+        if hasattr(engine_client, "reset_mm_cache"):
+            await engine_client.reset_mm_cache()
+        else:
+            logger.warning("reset_mm_cache is not available on this vLLM build; skipping KV cache reset.")
 
         app = build_app(args)
         await init_app_state(engine_client, vllm_config, app.state, args)

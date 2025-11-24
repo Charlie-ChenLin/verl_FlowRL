@@ -14,9 +14,15 @@ VAL_DATA="$HOME/data/searchR1_processed_direct/test.parquet"
 
 TOOL_CONFIG="$CONFIG_PATH/tool_config/search_tool_config.yaml"
 
+CUDA_VISIBLE_DEVICES=7 python examples/sglang_multiturn/search_r1_like/local_dense_retriever/retrieval_server.py \
+  --index_path ./data/search_r1_retriever/e5_Flat.index \
+  --corpus_path ./data/search_r1_retriever/wiki-18.jsonl.gz \
+  --retriever_model intfloat/e5-base-v2 \
+  --retriever_name e5 \
+  --topk 3 \
+  --faiss_gpu
 
-
-python3 -m verl.trainer.main_ppo \
+CUDA_VISIBLE_DEVICES=0,1,2,3,4,5,6 python3 -m verl.trainer.main_ppo \
     --config-path="$CONFIG_PATH" \
     --config-name='search_multiturn_grpo' \
     algorithm.adv_estimator=grpo \
@@ -55,7 +61,7 @@ python3 -m verl.trainer.main_ppo \
     trainer.logger='["console","wandb"]' \
     trainer.project_name='search_r1_like_async_rl' \
     trainer.experiment_name='qwen2.5-3b-instruct_function_rm-search-async-sgl-multi-w-searchtool-verify-n16' \
-    trainer.n_gpus_per_node=8 \
+    trainer.n_gpus_per_node=7 \
     trainer.nnodes=1 \
     trainer.save_freq=100 \
     trainer.test_freq=50 \

@@ -86,6 +86,15 @@ except ImportError:
 logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_LOGGING_LEVEL", "WARN"))
 
+# Ensure we always have an event loop (uvloop on py3.11 may not set one by default)
+def _get_or_create_event_loop():
+    try:
+        return asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        return loop
+
 
 # patch to avoid issue https://github.com/sgl-project/sglang/issues/6723
 def _set_envs_and_config(server_args: ServerArgs):
@@ -717,7 +726,7 @@ class SGLangRollout(BaseRollout):
         request_sampling_params.update(kwargs)
 
         if self._tp_rank == 0:
-            loop = asyncio.get_event_loop()
+            loop = _get_or_create_event_loop()
             output = loop.run_until_complete(
                 self._engine.async_generate(
                     prompt=None,  # because we have already convert it to prompt token id
@@ -789,7 +798,7 @@ class SGLangRollout(BaseRollout):
 
         # free cache engine
         if self._engine is not None and self._tp_rank == 0:
-            loop = asyncio.get_event_loop()
+            loop = _get_or_create_event_loop()
             loop.run_until_complete(self._engine.flush_cache())
 
         return DataProto(batch=batch, non_tensor_batch=non_tensor_batch)
@@ -1110,7 +1119,7 @@ class SGLangRollout(BaseRollout):
             # distinguish training and validation
             if is_validate:
                 # Validation mode: process all requests without abort
-                loop = asyncio.get_event_loop()
+                loop = _get_or_create_event_loop()
                 output_req_list = loop.run_until_complete(
                     asyncio.gather(
                         *[self._async_rollout_a_request(req, do_sample, is_validate, **kwargs) for req in req_list],
@@ -1162,7 +1171,7 @@ class SGLangRollout(BaseRollout):
                         await self._engine.abort_request(abort_all=True)
                     return final_results
 
-                loop = asyncio.get_event_loop()
+                loop = _get_or_create_event_loop()
                 output_req_list = loop.run_until_complete(run_with_cancellation())
 
             sorted_output_req_list = sorted(output_req_list, key=lambda x: (x.batch_data_id, x.rollout_offset))
@@ -1327,7 +1336,7 @@ class SGLangRollout(BaseRollout):
 
         # free cache engine
         if self._engine is not None and self._tp_rank == 0:
-            loop = asyncio.get_event_loop()
+            loop = _get_or_create_event_loop()
             loop.run_until_complete(self._engine.flush_cache())
 
         non_tensor_batch = {

@@ -45,6 +45,15 @@ logger = logging.getLogger(__file__)
 logger.setLevel(os.getenv("VERL_PPO_LOGGING_LEVEL", "WARN"))
 
 
+def _get_or_create_event_loop():
+    try:
+        return asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        return loop
+
+
 """
 Megatron Hybrid Engine:
 - During training, only the current pp stage holds the parameters
@@ -123,12 +132,12 @@ class MegatronSGLangShardingManager(BaseShardingManager):
     def __enter__(self):
         self.timing = {}
         with simple_timer("reshard", self.timing):
-            loop = asyncio.get_event_loop()
+            loop = _get_or_create_event_loop()
             loop.run_until_complete(self.wake_up())
 
     @GPUMemoryLogger(role="MegatronSGLangShardingManager exit", logger=logger)
     def __exit__(self, exc_type, exc_value, traceback):
-        loop = asyncio.get_event_loop()
+        loop = _get_or_create_event_loop()
         loop.run_until_complete(self.sleep())
 
     async def update_weights(self, params):

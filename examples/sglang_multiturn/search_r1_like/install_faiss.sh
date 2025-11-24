@@ -7,10 +7,13 @@ conda activate verl050_faiss_clone
 # 3) 卸载旧 faiss（避免混用）
 pip uninstall -y faiss-gpu-cu12 faiss-gpu faiss-cpu faiss || true
 
+# 先更新cmake
+conda install -c conda-forge cmake=3.27
+
 # 4) 编译安装带 sm90 的 faiss-gpu
 git clone https://github.com/facebookresearch/faiss.git
 cd faiss
-git checkout v1.9.0  # 或你信任的版本
+git checkout v1.8.0  # 或你信任的版本
 cmake -B build \
   -DFAISS_ENABLE_GPU=ON \
   -DFAISS_ENABLE_PYTHON=ON \

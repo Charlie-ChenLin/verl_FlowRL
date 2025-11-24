@@ -12,10 +12,15 @@ fi
 pip install --no-cache-dir "vllm==0.8.5.post1" "torch==2.6.0" "torchvision==0.21.0" "torchaudio==2.6.0" "tensordict==0.6.2" torchdata
 
 echo "2. install basic packages"
+# pip install "transformers[hf_xet]>=4.51.0" accelerate datasets peft hf-transfer \
+#     "numpy<2.0.0" "pyarrow>=15.0.0" pandas \
+#     ray[default] codetiming hydra-core pylatexenc qwen-vl-utils wandb dill pybind11 liger-kernel mathruler \
+#     pytest py-spy pyext pre-commit ruff tensorboard 
 pip install "transformers[hf_xet]>=4.51.0" accelerate datasets peft hf-transfer \
     "numpy<2.0.0" "pyarrow>=15.0.0" pandas \
     ray[default] codetiming hydra-core pylatexenc qwen-vl-utils wandb dill pybind11 liger-kernel mathruler \
-    pytest py-spy pyext pre-commit ruff tensorboard 
+    pytest py-spy pre-commit ruff tensorboard 
+
 
 pip install "nvidia-ml-py>=12.560.30" "fastapi[standard]>=0.115.0" "optree>=0.13.0" "pydantic>=2.9" "grpcio>=1.62.1"
 
@@ -52,3 +57,15 @@ if [ $USE_MEGATRON -eq 1 ]; then
 fi
 
 echo "Successfully installed all packages"
+
+
+
+# 解决ray的版本冲突问题，但是目前会导致vllm的版本冲突，
+pip install --no-cache-dir --force-reinstall \
+  "protobuf>=5,<6" \
+  "opentelemetry-api>=1.28,<1.32" \
+  "opentelemetry-sdk>=1.28,<1.32" \
+  "opentelemetry-proto>=1.28,<1.32" \
+  "opentelemetry-exporter-otlp-proto-http>=1.28,<1.32" \
+  "opentelemetry-exporter-otlp-proto-grpc>=1.28,<1.32" \
+  "opentelemetry-exporter-otlp>=1.28,<1.32"

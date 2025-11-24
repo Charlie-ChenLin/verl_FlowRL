@@ -444,7 +444,11 @@ class vLLMHttpServer:
             logger.info("skip sleep in standalone mode")
 
     async def wait_for_requests_to_drain(self):
-        await self.engine.wait_for_requests_to_drain()
+        # Some vLLM builds lack this API; skip gracefully.
+        if hasattr(self.engine, "wait_for_requests_to_drain"):
+            await self.engine.wait_for_requests_to_drain()
+        else:
+            logger.warning("wait_for_requests_to_drain is not available on this vLLM build; skip draining.")
 
 
 _rollout_worker_actor_cls = ray.remote(vLLMAsyncRollout)

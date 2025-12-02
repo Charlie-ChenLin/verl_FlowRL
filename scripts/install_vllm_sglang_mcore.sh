@@ -56,5 +56,8 @@ echo "Successfully installed all packages"
 # sglang 0.4.8 里才有供multi-turn跑的 sglang.srt.weight_sync
 pip uninstall -y sglang sgl-kernel
 # pip install "sglang[all]==0.4.8"
-pip install --no-deps sglang==0.4.8
-pip install --no-deps sgl-kernel==0.1.9 
+# pip install --no-deps sglang==0.4.8
+# pip install --no-deps sgl-kernel==0.1.9 
+pip download --no-binary :all: sglang==0.4.8 -d /tmp/sgl_src
+tar -xf /tmp/sgl_src/sglang-0.4.8.tar.gz -C /tmp/sgl_src
+

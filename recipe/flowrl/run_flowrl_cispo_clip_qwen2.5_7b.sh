@@ -4,13 +4,15 @@ set -xeuo pipefail
 
 export WANDB_MODE='offline'
 # export WANDB_RESUME='must'
-export WANDB_DIR='/mnt/shared-storage-user/chenlin1/verl_FlowRL_dev/wandb'
+export WANDB_DIR='/mnt/shared-storage-user/chenlin1/verl_FlowRL_lchen/wandb'
 # export WANDB_RUN_ID='offline-run-20251103_220152-ok1pyy8q'
 export VLLM_USE_FLASHINFER=1
 export HYDRA_FULL_ERROR=1
 
+flowrl_loss_variant="vanilla"
+
 project_name='FlowRL'
-exp_name="FlowRL-cispo-clip-Qwen2.5-7B-$(date +'%Y%m%d-%H%M')"
+exp_name="FlowRL-${flowrl_loss_variant}-Qwen2.5-7B-$(date +'%Y%m%d-%H%M')"
 
 # Algorithm settings
 adv_estimator=grpo
@@ -75,6 +77,7 @@ CKPTS_DIR=${CKPTS_DIR:-"/mnt/shared-storage-user/formalverification-shared/chenl
 TRAIN_FILE=${TRAIN_FILE:-"/mnt/shared-storage-user/chenlin1/verl/downloads/data/dapo-math-17k.parquet"}
 TEST_FILE=${TEST_FILE:-"/mnt/shared-storage-user/chenlin1/verl/downloads/data/aime-2024.parquet"}
 
+
 # Sampling
 temperature=1.0
 top_p=1.0
@@ -121,12 +124,14 @@ python3 -m recipe.flowrl.main_flowrl \
     actor_rollout_ref.rollout.log_prob_max_token_len_per_gpu=${infer_ppo_max_token_len} \
     actor_rollout_ref.model.path="${MODEL_PATH}" \
     actor_rollout_ref.model.enable_gradient_checkpointing=True \
+    actor_rollout_ref.actor.flowrl_loss_variant=${flowrl_loss_variant} \
     actor_rollout_ref.actor.optim.lr=1e-6 \
     actor_rollout_ref.actor.optim.lr_warmup_steps=10 \
     actor_rollout_ref.actor.optim.weight_decay=0.1 \
     actor_rollout_ref.actor.ppo_mini_batch_size=${train_prompt_mini_bsz} \
     actor_rollout_ref.actor.fsdp_config.param_offload=${offload} \
     actor_rollout_ref.actor.fsdp_config.optimizer_offload=${offload} \
+    actor_rollout_ref.actor.fsdp_config.fsdp_size=-1 \
     actor_rollout_ref.actor.entropy_coeff=0 \
     actor_rollout_ref.actor.grad_clip=1.0 \
     actor_rollout_ref.actor.loss_agg_mode=${loss_agg_mode} \
@@ -147,7 +152,6 @@ python3 -m recipe.flowrl.main_flowrl \
     actor_rollout_ref.rollout.name=vllm \
     actor_rollout_ref.ref.fsdp_config.param_offload=${offload} \
     actor_rollout_ref.ref.ulysses_sequence_parallel_size=${sp_size} \
-    actor_rollout_ref.actor.fsdp_config.fsdp_size=-1 \
     reward_model.reward_manager=dapo \
     reward_model.overlong_buffer.enable=${enable_overlong_buffer} \
     reward_model.overlong_buffer.len=${overlong_buffer_len} \

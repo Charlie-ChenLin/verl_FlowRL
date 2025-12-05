@@ -29,5 +29,9 @@ algorithm:
     metric: null # acc / score / seq_reward / seq_final_reward / ...
     max_num_gen_batches: 0 # Non-positive values mean no upper limit
 
+actor_rollout_ref:
+  actor:
+    flowrl_loss_variant: ${oc.env:FLOWRL_LOSS_VARIANT,flowrl_cispo}
+
 trainer:
   project_name: verl-flowrl

@@ -9,7 +9,10 @@ export WANDB_DIR='/mnt/shared-storage-user/chenlin1/verl_FlowRL_lchen/wandb'
 export VLLM_USE_FLASHINFER=1
 export HYDRA_FULL_ERROR=1
 
-flowrl_loss_variant="vanilla"
+# flowrl_loss_variant="vanilla"
+# flowrl_loss_variant="linex_one"
+flowrl_loss_variant="linex_one_half"
+# flowrl_loss_variant="shifted_cosh"
 
 project_name='FlowRL'
 exp_name="FlowRL-${flowrl_loss_variant}-Qwen2.5-7B-$(date +'%Y%m%d-%H%M')"

@@ -127,3 +127,7 @@ log
 outputs
 .history
 work_dirs/
+data/
+models/
+sglang
+10.1

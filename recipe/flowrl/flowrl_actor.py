@@ -75,11 +75,15 @@ class FlowRLActor(DataParallelPPOActor):
         # FlowRL loss selector: prefer explicit config, then env, then default.
         self.flowrl_loss_variant = getattr(config, "flowrl_loss_variant", None)
         self._flowrl_loss_fns = {
-            "vanilla": self.compute_flowrl,
-            "cispo": self.compute_flowrl_cispo_clip,
+            "vanilla": self.compute_flowrl_vanilla,
             "linex_one": self.compute_flowrl_linex_one,
             "linex_one_half":self.compute_flowrl_linex_one_half,
             "shifted_cosh":self.compute_flowrl_shifted_cosh,
+            "cispo": self.compute_flowrl_cispo_clip, # here cispo clamped both sides of importance weights
+            "vanilla_clamp_both": self.compute_flowrl_vanilla_clamp_both,
+            "linex_one_clamp_both": self.compute_flowrl_linex_one_clamp_both,
+            "linex_one_half_clamp_both": self.compute_flowrl_linex_one_half_clamp_both,
+            "shifted_cosh_clamp_both": self.compute_flowrl_shifted_cosh_clamp_both,
         }
         if self.flowrl_loss_variant not in self._flowrl_loss_fns:
             raise ValueError(
@@ -543,7 +547,7 @@ class FlowRLActor(DataParallelPPOActor):
 
         return avg_loss, loss_term_dict
     
-    def compute_flowrl(
+    def compute_flowrl_vanilla(
         self,
         log_prob=None,
         ref_log_prob=None,
@@ -731,6 +735,227 @@ class FlowRLActor(DataParallelPPOActor):
         log_w = verl_F.masked_sum(log_prob - old_log_prob, response_mask, axis=1)
         imp_w_raw = torch.exp(log_w).detach()
         imp_w = torch.clamp(imp_w_raw, max=10)
+
+        # Loss: weighted squared residual with importance weights
+        weighted_losses = imp_w * (torch.exp(delta)+torch.exp(-delta)-2)
+        avg_loss = torch.mean(weighted_losses)
+
+        # PPO KL: negative_approx_kl = log_prob - old_log_prob
+        negative_approx_kl = log_prob - old_log_prob
+        ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
+
+        # Reference KL: approx_kl_ref = log_prob - ref_log_prob
+        approx_kl_ref = log_prob - ref_log_prob
+        ref_kl = verl_F.masked_mean(-approx_kl_ref, response_mask)
+
+        # Metrics
+        loss_term_dict = {
+            "actor/log_prob": verl_F.masked_mean(log_prob, response_mask).detach().item(),
+            "actor/old_log_prob": verl_F.masked_mean(old_log_prob, response_mask).detach().item(),
+            "actor/ref_log_prob": verl_F.masked_mean(ref_log_prob, response_mask).detach().item(),
+            "actor/log_z": log_z.mean().detach().item(),
+            "actor/log_reward": verl_F.masked_mean(reward, response_mask).detach().item(),
+            "actor/final_loss": avg_loss.detach().item(),
+            "actor/importance_weight_raw": imp_w_raw.mean().detach().item(),
+            "actor/importance_weight": imp_w.mean().detach().item(),
+            "actor/ppo_kl": ppo_kl.detach().item(),  # PPO-style KL (current vs old policy)
+            "actor/ref_kl": ref_kl.detach().item(),  # KL with reference policy
+        }
+
+        return avg_loss, loss_term_dict
+    
+    def compute_flowrl_vanilla_clamp_both(
+        self,
+        log_prob=None,
+        ref_log_prob=None,
+        old_log_prob=None,
+        log_z=None,
+        reward=None,
+        response_mask=None,
+        clip_ratio=None,
+        rollout_log_probs=None,
+    ):
+        # squeeze log_z to (B,)
+        log_z = log_z.squeeze(-1)
+
+        # Average token log-probs & rewards over valid positions
+        avg_log_prob = verl_F.masked_mean(log_prob, response_mask, axis=1)
+        avg_ref_log_prob = verl_F.masked_mean(ref_log_prob, response_mask, axis=1)
+        seq_log_reward = verl_F.masked_mean(reward, response_mask, axis=1)
+
+        # FlowRL residual: logZ + logpf - β*R - logpref
+        delta = log_z + avg_log_prob - self.flowrl_beta_coef * seq_log_reward - avg_ref_log_prob
+
+        # Importance ratio from current vs old policy (product of token ratios)
+        log_w = verl_F.masked_sum(log_prob - old_log_prob, response_mask, axis=1)
+        imp_w_raw = torch.exp(log_w).detach()
+        # imp_w = torch.clamp(imp_w_raw, max=10)
+        imp_w = torch.clamp(imp_w_raw, 1 - 0.2, 1 + 0.28)
+
+        # Loss: weighted squared residual with importance weights
+        weighted_losses = imp_w * (delta**2)
+        avg_loss = torch.mean(weighted_losses)
+
+        # PPO KL: negative_approx_kl = log_prob - old_log_prob
+        negative_approx_kl = log_prob - old_log_prob
+        ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
+
+        # Reference KL: approx_kl_ref = log_prob - ref_log_prob
+        approx_kl_ref = log_prob - ref_log_prob
+        ref_kl = verl_F.masked_mean(-approx_kl_ref, response_mask)
+
+        # Metrics
+        loss_term_dict = {
+            "actor/log_prob": verl_F.masked_mean(log_prob, response_mask).detach().item(),
+            "actor/old_log_prob": verl_F.masked_mean(old_log_prob, response_mask).detach().item(),
+            "actor/ref_log_prob": verl_F.masked_mean(ref_log_prob, response_mask).detach().item(),
+            "actor/log_z": log_z.mean().detach().item(),
+            "actor/log_reward": verl_F.masked_mean(reward, response_mask).detach().item(),
+            "actor/final_loss": avg_loss.detach().item(),
+            "actor/importance_weight_raw": imp_w_raw.mean().detach().item(),
+            "actor/importance_weight": imp_w.mean().detach().item(),
+            "actor/ppo_kl": ppo_kl.detach().item(),  # PPO-style KL (current vs old policy)
+            "actor/ref_kl": ref_kl.detach().item(),  # KL with reference policy
+        }
+
+        return avg_loss, loss_term_dict
+    
+    def compute_flowrl_linex_one_clamp_both(
+        self,
+        log_prob=None,
+        ref_log_prob=None,
+        old_log_prob=None,
+        log_z=None,
+        reward=None,
+        response_mask=None,
+        clip_ratio=None,
+        rollout_log_probs=None,
+    ):
+        log_z = log_z.squeeze(-1)
+
+        # Average token log-probs & rewards over valid positions
+        avg_log_prob = verl_F.masked_mean(log_prob, response_mask, axis=1)
+        avg_ref_log_prob = verl_F.masked_mean(ref_log_prob, response_mask, axis=1)
+        seq_log_reward = verl_F.masked_mean(reward, response_mask, axis=1)
+
+        # FlowRL residual: logZ + logpf - β*R - logpref
+        delta = log_z + avg_log_prob - self.flowrl_beta_coef * seq_log_reward - avg_ref_log_prob
+
+        # Importance ratio from current vs old policy (product of token ratios)
+        log_w = verl_F.masked_sum(log_prob - old_log_prob, response_mask, axis=1)
+        imp_w_raw = torch.exp(log_w).detach()
+        # imp_w = torch.clamp(imp_w_raw, max=10)
+        imp_w = torch.clamp(imp_w_raw, 1 - 0.2, 1 + 0.28)
+
+        # Loss: weighted squared residual with importance weights
+        weighted_losses = imp_w * (torch.exp(delta)-delta-1)
+        avg_loss = torch.mean(weighted_losses)
+
+        # PPO KL: negative_approx_kl = log_prob - old_log_prob
+        negative_approx_kl = log_prob - old_log_prob
+        ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
+
+        # Reference KL: approx_kl_ref = log_prob - ref_log_prob
+        approx_kl_ref = log_prob - ref_log_prob
+        ref_kl = verl_F.masked_mean(-approx_kl_ref, response_mask)
+
+        # Metrics
+        loss_term_dict = {
+            "actor/log_prob": verl_F.masked_mean(log_prob, response_mask).detach().item(),
+            "actor/old_log_prob": verl_F.masked_mean(old_log_prob, response_mask).detach().item(),
+            "actor/ref_log_prob": verl_F.masked_mean(ref_log_prob, response_mask).detach().item(),
+            "actor/log_z": log_z.mean().detach().item(),
+            "actor/log_reward": verl_F.masked_mean(reward, response_mask).detach().item(),
+            "actor/final_loss": avg_loss.detach().item(),
+            "actor/importance_weight_raw": imp_w_raw.mean().detach().item(),
+            "actor/importance_weight": imp_w.mean().detach().item(),
+            "actor/ppo_kl": ppo_kl.detach().item(),  # PPO-style KL (current vs old policy)
+            "actor/ref_kl": ref_kl.detach().item(),  # KL with reference policy
+        }
+
+        return avg_loss, loss_term_dict
+    
+    def compute_flowrl_linex_one_half_clamp_both(
+        self,
+        log_prob=None,
+        ref_log_prob=None,
+        old_log_prob=None,
+        log_z=None,
+        reward=None,
+        response_mask=None,
+        clip_ratio=None,
+        rollout_log_probs=None,
+    ):
+        log_z = log_z.squeeze(-1)
+
+        # Average token log-probs & rewards over valid positions
+        avg_log_prob = verl_F.masked_mean(log_prob, response_mask, axis=1)
+        avg_ref_log_prob = verl_F.masked_mean(ref_log_prob, response_mask, axis=1)
+        seq_log_reward = verl_F.masked_mean(reward, response_mask, axis=1)
+
+        # FlowRL residual: logZ + logpf - β*R - logpref
+        delta = log_z + avg_log_prob - self.flowrl_beta_coef * seq_log_reward - avg_ref_log_prob
+
+        # Importance ratio from current vs old policy (product of token ratios)
+        log_w = verl_F.masked_sum(log_prob - old_log_prob, response_mask, axis=1)
+        imp_w_raw = torch.exp(log_w).detach()
+        # imp_w = torch.clamp(imp_w_raw, max=10)
+        imp_w = torch.clamp(imp_w_raw, 1 - 0.2, 1 + 0.28)
+
+        # Loss: weighted squared residual with importance weights
+        weighted_losses = imp_w * (4*torch.exp(delta/2)-2*delta-4)
+        avg_loss = torch.mean(weighted_losses)
+
+        # PPO KL: negative_approx_kl = log_prob - old_log_prob
+        negative_approx_kl = log_prob - old_log_prob
+        ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
+
+        # Reference KL: approx_kl_ref = log_prob - ref_log_prob
+        approx_kl_ref = log_prob - ref_log_prob
+        ref_kl = verl_F.masked_mean(-approx_kl_ref, response_mask)
+
+        # Metrics
+        loss_term_dict = {
+            "actor/log_prob": verl_F.masked_mean(log_prob, response_mask).detach().item(),
+            "actor/old_log_prob": verl_F.masked_mean(old_log_prob, response_mask).detach().item(),
+            "actor/ref_log_prob": verl_F.masked_mean(ref_log_prob, response_mask).detach().item(),
+            "actor/log_z": log_z.mean().detach().item(),
+            "actor/log_reward": verl_F.masked_mean(reward, response_mask).detach().item(),
+            "actor/final_loss": avg_loss.detach().item(),
+            "actor/importance_weight_raw": imp_w_raw.mean().detach().item(),
+            "actor/importance_weight": imp_w.mean().detach().item(),
+            "actor/ppo_kl": ppo_kl.detach().item(),  # PPO-style KL (current vs old policy)
+            "actor/ref_kl": ref_kl.detach().item(),  # KL with reference policy
+        }
+
+        return avg_loss, loss_term_dict
+ 
+    def compute_flowrl_shifted_cosh_clamp_both(
+        self,
+        log_prob=None,
+        ref_log_prob=None,
+        old_log_prob=None,
+        log_z=None,
+        reward=None,
+        response_mask=None,
+        clip_ratio=None,
+        rollout_log_probs=None,
+    ):
+        log_z = log_z.squeeze(-1)
+
+        # Average token log-probs & rewards over valid positions
+        avg_log_prob = verl_F.masked_mean(log_prob, response_mask, axis=1)
+        avg_ref_log_prob = verl_F.masked_mean(ref_log_prob, response_mask, axis=1)
+        seq_log_reward = verl_F.masked_mean(reward, response_mask, axis=1)
+
+        # FlowRL residual: logZ + logpf - β*R - logpref
+        delta = log_z + avg_log_prob - self.flowrl_beta_coef * seq_log_reward - avg_ref_log_prob
+
+        # Importance ratio from current vs old policy (product of token ratios)
+        log_w = verl_F.masked_sum(log_prob - old_log_prob, response_mask, axis=1)
+        imp_w_raw = torch.exp(log_w).detach()
+        # imp_w = torch.clamp(imp_w_raw, max=10)
+        imp_w = torch.clamp(imp_w_raw, 1 - 0.2, 1 + 0.28)
 
         # Loss: weighted squared residual with importance weights
         weighted_losses = imp_w * (torch.exp(delta)+torch.exp(-delta)-2)

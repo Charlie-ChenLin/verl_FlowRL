@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -xeuo pipefail
 
+# Allow overriding FlowRL loss variant from CLI arg or env
+flowrl_loss_variant="${FLOWRL_LOSS_VARIANT:-${1:-vanilla}}"
+
 
 export WANDB_MODE='offline'
 # export WANDB_RESUME='must'
@@ -11,8 +14,9 @@ export HYDRA_FULL_ERROR=1
 
 # flowrl_loss_variant="vanilla"
 # flowrl_loss_variant="linex_one"
-flowrl_loss_variant="linex_one_half"
+# flowrl_loss_variant="linex_one_half"
 # flowrl_loss_variant="shifted_cosh"
+# 通过传入参数或设置FLOWRL_LOSS_VARIANT环境变量控制使用哪个loss variant
 
 project_name='FlowRL'
 exp_name="FlowRL-${flowrl_loss_variant}-Qwen2.5-7B-$(date +'%Y%m%d-%H%M')"
@@ -32,10 +36,6 @@ kl_loss_coef=0.0
 # DAPO Dual-clip parameters
 clip_ratio_low=0.2
 clip_ratio_high=0.28
-
-# FlowRL Loss Variant Selection
-# Options: "vanilla" (no TIS/clip), "flowrl_clip" (clip IS only), "flowrl_clip_tis" (both TIS + clip)
-export FLOWRL_LOSS_VARIANT="flowrl_cispo"
 
 # Sequence lengths 
 max_prompt_length=$((1024 * 2))
